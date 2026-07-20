@@ -109,6 +109,51 @@ const TYPE_SPECS: Record<string, TypeSpec> = {
   },
 };
 
+/**
+ * Schema.org subtypes that ARE an Organization for entity-recognition purposes.
+ *
+ * Matching only the literal strings "Organization" and "LocalBusiness" produces
+ * false negatives on every site that uses a precise subtype — an accountancy
+ * marked up as `AccountingService` (→ FinancialService → LocalBusiness →
+ * Organization) is doing it *more* correctly, not less.
+ */
+const ORGANIZATION_TYPES = new Set(
+  [
+    "Organization", "LocalBusiness", "Corporation", "NGO", "OnlineBusiness",
+    "EducationalOrganization", "GovernmentOrganization", "MedicalOrganization",
+    "NewsMediaOrganization", "PerformingGroup", "ResearchOrganization",
+    "SportsOrganization", "Airline", "Consortium", "LibrarySystem", "WorkersUnion",
+    // LocalBusiness subtypes
+    "AccountingService", "FinancialService", "LegalService", "ProfessionalService",
+    "Store", "Restaurant", "MedicalBusiness", "HomeAndConstructionBusiness",
+    "AutomotiveBusiness", "ChildCare", "Dentist", "DryCleaningOrLaundry",
+    "EmergencyService", "EmploymentAgency", "EntertainmentBusiness",
+    "FoodEstablishment", "GovernmentOffice", "HealthAndBeautyBusiness",
+    "InsuranceAgency", "InternetCafe", "Library", "LodgingBusiness",
+    "RadioStation", "RealEstateAgent", "RecyclingCenter", "SelfStorage",
+    "ShoppingCenter", "SportsActivityLocation", "TelevisionStation",
+    "TouristInformationCenter", "TravelAgency", "Notary", "TaxPreparation",
+    "BankOrCreditUnion", "AutoRepair", "Plumber", "Electrician",
+  ].map((t) => t.toLowerCase()),
+);
+
+/** Article-family types, for which an `author` is genuinely expected. */
+const ARTICLE_TYPES = new Set(
+  ["Article", "BlogPosting", "NewsArticle", "TechArticle", "ScholarlyArticle", "Report"].map(
+    (t) => t.toLowerCase(),
+  ),
+);
+
+/** True when any of `types` is an Organization or one of its subtypes. */
+export function isOrganizationType(types: string[]): boolean {
+  return types.some((t) => ORGANIZATION_TYPES.has(t.toLowerCase()));
+}
+
+/** True when any of `types` is an Article-family type. */
+export function isArticleType(types: string[]): boolean {
+  return types.some((t) => ARTICLE_TYPES.has(t.toLowerCase()));
+}
+
 export interface StructuredDataItem {
   format: "json-ld" | "microdata" | "rdfa";
   type: string;
@@ -130,6 +175,8 @@ export interface StructuredDataReport {
   items: StructuredDataItem[];
   types_found: string[];
   has_organization: boolean;
+  /** A Person entity — the correct publisher markup for a personal brand. */
+  has_person: boolean;
   has_website: boolean;
   has_breadcrumb: boolean;
   has_article: boolean;
@@ -251,12 +298,12 @@ export function analyzeStructuredData(page: PageDoc): StructuredDataReport {
   const hasType = (needle: string) =>
     items.some((i) => i.all_types.some((t) => t.toLowerCase() === needle.toLowerCase()));
 
-  const hasOrganization = hasType("Organization") || hasType("LocalBusiness");
+  const hasOrganization = isOrganizationType(typesFound);
   const hasWebsite = hasType("WebSite");
   const hasBreadcrumb = hasType("BreadcrumbList");
-  const hasArticle =
-    hasType("Article") || hasType("BlogPosting") || hasType("NewsArticle");
+  const hasArticle = isArticleType(typesFound);
   const hasFaq = hasType("FAQPage");
+  const hasPerson = hasType("Person");
 
   // --- scoring
   let score = 0;
@@ -307,11 +354,17 @@ export function analyzeStructuredData(page: PageDoc): StructuredDataReport {
     });
   }
 
+  // A Person entity is the correct publisher markup for a personal brand, so it
+  // satisfies this check just as an Organization does.
+  const orgType = typesFound.find((t) => isOrganizationType([t]));
   if (hasOrganization) {
     score += 10;
-    findings.push({ severity: "pass", message: "Organization/LocalBusiness markup present — this is what builds your entity in knowledge graphs." });
+    findings.push({ severity: "pass", message: `Publisher entity present (${orgType}) — this is what builds your entity in knowledge graphs.` });
+  } else if (hasPerson) {
+    score += 10;
+    findings.push({ severity: "pass", message: "Person entity present — the correct publisher markup for a personal brand." });
   } else {
-    findings.push({ severity: "warn", message: "No Organization markup. Add it (with `sameAs` links to your official profiles) so AI systems can resolve who publishes this site." });
+    findings.push({ severity: "warn", message: "No publisher entity (Organization, one of its subtypes, or Person). Add one with `sameAs` links to your official profiles so AI systems can resolve who publishes this site." });
   }
 
   if (hasBreadcrumb) {
@@ -340,6 +393,7 @@ export function analyzeStructuredData(page: PageDoc): StructuredDataReport {
     items,
     types_found: typesFound,
     has_organization: hasOrganization,
+    has_person: hasPerson,
     has_website: hasWebsite,
     has_breadcrumb: hasBreadcrumb,
     has_article: hasArticle,

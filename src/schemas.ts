@@ -165,6 +165,7 @@ export const StructuredDataSchema = z.object({
   items: z.array(StructuredDataItem),
   types_found: z.array(z.string()),
   has_organization: z.boolean(),
+  has_person: z.boolean(),
   has_website: z.boolean(),
   has_breadcrumb: z.boolean(),
   has_article: z.boolean(),

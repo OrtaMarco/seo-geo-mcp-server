@@ -384,24 +384,43 @@ export function analyzeGeoReadiness(inputs: GeoInputs): GeoReport {
   );
 
   // --- 5. Attribution & trust signals (weight 10)
+  //
+  // An `author` is only expected on article-type pages. Demanding one on a
+  // service or landing page would penalise correct markup, so the weight is
+  // redistributed to the publisher entity when no article is present.
   const hasAuthorMarkup = structuredData.items.some((i) => i.properties.includes("author"));
   const hasAuthorVisible = $('[rel="author"], [itemprop="author"], .author, .byline').length > 0;
-  const hasOrganization = structuredData.has_organization;
+  const hasAuthor = hasAuthorMarkup || hasAuthorVisible;
+  const hasEntity = structuredData.has_organization || structuredData.has_person;
   const hasSameAs = structuredData.items.some((i) => i.properties.includes("sameAs"));
+  const expectsAuthor = structuredData.has_article;
 
   let trustEarned = 0;
-  if (hasAuthorMarkup || hasAuthorVisible) trustEarned += 4;
-  if (hasOrganization) trustEarned += 4;
-  if (hasSameAs) trustEarned += 2;
+  if (expectsAuthor) {
+    if (hasAuthor) trustEarned += 4;
+    if (hasEntity) trustEarned += 4;
+    if (hasSameAs) trustEarned += 2;
+  } else {
+    if (hasEntity) trustEarned += 6;
+    if (hasSameAs) trustEarned += 4;
+  }
+
+  const missing: string[] = [];
+  if (expectsAuthor && !hasAuthor) missing.push("an `author` on the article markup");
+  if (!hasEntity) missing.push("a publisher entity (Organization subtype or Person)");
+  if (!hasSameAs) missing.push("`sameAs` links to official profiles");
 
   add(
     "attribution",
     "Authorship & entity signals",
     10,
     trustEarned,
-    `Author: ${hasAuthorMarkup ? "in schema" : hasAuthorVisible ? "visible only" : "absent"}; Organization: ${hasOrganization ? "present" : "absent"}; sameAs: ${hasSameAs ? "present" : "absent"}.`,
-    trustEarned < 8
-      ? "Add author and Organization markup with `sameAs` links to official profiles — AI systems weight attributable sources more heavily."
+    `Publisher entity: ${hasEntity ? "present" : "absent"}; sameAs: ${hasSameAs ? "present" : "absent"}` +
+      (expectsAuthor
+        ? `; author: ${hasAuthorMarkup ? "in schema" : hasAuthorVisible ? "visible only" : "absent"}.`
+        : " (no author expected — this is not an article page)."),
+    missing.length
+      ? `Add ${missing.join(" and ")} — AI systems weight attributable sources more heavily.`
       : undefined,
   );
 

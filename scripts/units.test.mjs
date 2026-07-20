@@ -11,10 +11,10 @@ import assert from "node:assert/strict";
 import * as cheerio from "cheerio";
 
 import { parseRobots, isAllowed, analyzeAiCrawlerAccess } from "../dist/core/robots.js";
-import { analyzeRendering } from "../dist/core/geo.js";
+import { analyzeRendering, analyzeGeoReadiness } from "../dist/core/geo.js";
 import { analyzeHreflang, normalizeForCompare } from "../dist/core/meta.js";
 import { analyzeStructuredData } from "../dist/core/structured-data.js";
-import { analyzeHeadings } from "../dist/core/content.js";
+import { analyzeHeadings, analyzeContent } from "../dist/core/content.js";
 
 /** Build a RobotsTxt object from raw text, as fetchRobots would. */
 function robots(text, status = 200) {
@@ -258,6 +258,58 @@ test("malformed JSON-LD is reported rather than silently dropped", () => {
   const report = analyzeStructuredData(page(html));
   assert.equal(report.parse_errors.length, 1);
   assert.match(report.parse_errors[0], /not valid JSON/);
+});
+
+test("LocalBusiness subtypes count as a publisher entity", () => {
+  // AccountingService → FinancialService → LocalBusiness → Organization.
+  // Matching only the literal "Organization" string would be a false negative.
+  const html = `<html><head><script type="application/ld+json">
+    {"@context":"https://schema.org","@type":"AccountingService","name":"Acme","sameAs":["https://facebook.com/acme"]}
+  </script></head><body></body></html>`;
+  const report = analyzeStructuredData(page(html));
+  assert.equal(report.has_organization, true);
+});
+
+test("a Person entity is recognised as publisher markup for a personal brand", () => {
+  const html = `<html><head><script type="application/ld+json">
+    {"@context":"https://schema.org","@type":"Person","name":"Marco","sameAs":["https://github.com/x"]}
+  </script></head><body></body></html>`;
+  const report = analyzeStructuredData(page(html));
+  assert.equal(report.has_person, true);
+  assert.equal(report.has_organization, false);
+});
+
+test("a non-article page is not penalised for lacking an author", () => {
+  const html = `<html><head><script type="application/ld+json">
+    {"@context":"https://schema.org","@type":"AccountingService","name":"Acme","sameAs":["https://facebook.com/acme"]}
+  </script></head><body><main><h1>Services</h1><p>${"Content. ".repeat(60)}</p></main></body></html>`;
+  const doc = page(html);
+  const sd = analyzeStructuredData(doc);
+  const report = analyzeGeoReadiness({
+    page: doc,
+    headings: analyzeHeadings(doc),
+    content: analyzeContent(doc),
+    structuredData: sd,
+    rendering: analyzeRendering(doc),
+  });
+  const attribution = report.signals.find((s) => s.id === "attribution");
+  assert.equal(attribution.earned, 10, "entity + sameAs should be full marks without an author");
+});
+
+test("an article page IS expected to carry an author", () => {
+  const html = `<html><head><script type="application/ld+json">
+    {"@context":"https://schema.org","@type":"BlogPosting","headline":"X","sameAs":["https://x.com/y"]}
+  </script></head><body><main><h1>Post</h1><p>${"Content. ".repeat(60)}</p></main></body></html>`;
+  const doc = page(html);
+  const report = analyzeGeoReadiness({
+    page: doc,
+    headings: analyzeHeadings(doc),
+    content: analyzeContent(doc),
+    structuredData: analyzeStructuredData(doc),
+    rendering: analyzeRendering(doc),
+  });
+  const attribution = report.signals.find((s) => s.id === "attribution");
+  assert.ok(attribution.earned < 10, "a missing author should cost marks on an article");
 });
 
 test("an array of JSON-LD objects is handled", () => {
