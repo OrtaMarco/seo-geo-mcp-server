@@ -1,0 +1,51 @@
+<evaluation>
+  <qa_pair>
+    <question>Anthropic currently documents three crawler user-agent tokens. One of them exists specifically to index pages so that Claude can surface and cite them in search results — as opposed to training models or fetching a page because a user asked. What is that token called?</question>
+    <answer>Claude-SearchBot</answer>
+  </qa_pair>
+
+  <qa_pair>
+    <question>Among the AI crawler tokens that can be checked against a site's robots.txt, one published by Google is not a crawler at all: it sends no requests of its own and exists purely as an opt-out control signal. What is the exact name of that token?</question>
+    <answer>Google-Extended</answer>
+  </qa_pair>
+
+  <qa_pair>
+    <question>Two AI crawler tokens are flagged as deprecated, because they no longer appear in their vendor's current webmaster documentation and are retained only so historical robots.txt files still resolve. Both belong to the same company. Which company?</question>
+    <answer>Anthropic</answer>
+  </qa_pair>
+
+  <qa_pair>
+    <question>Perplexity publishes two crawler tokens. One of them is documented by Perplexity itself as generally ignoring robots.txt, which means disallowing it is advisory rather than an enforceable block. What is that token called?</question>
+    <answer>Perplexity-User</answer>
+  </qa_pair>
+
+  <qa_pair>
+    <question>Meta documents a crawler whose purpose is building link-preview cards from Open Graph tags. It replaced an older, now-retired token that many robots.txt files still reference. What is the token Meta currently documents for link previews?</question>
+    <answer>facebookexternalhit</answer>
+  </qa_pair>
+
+  <qa_pair>
+    <question>OpenAI documents four crawler tokens. One of them exists solely to validate landing pages that advertisers submit as ChatGPT ads. What is the exact name of that token?</question>
+    <answer>OAI-AdsBot</answer>
+  </qa_pair>
+
+  <qa_pair>
+    <question>When auditing whether a page is ready to be cited by AI answer engines, some vendors are listed as publishing no official crawler documentation at all — meaning a robots.txt rule cannot be relied on to control them either way. Which company, the one behind the Grok assistant, is listed in that category?</question>
+    <answer>xAI</answer>
+  </qa_pair>
+
+  <qa_pair>
+    <question>Checking a site for an llms.txt file reports the real adoption status of that proposal. One major search company has publicly stated that it does not support llms.txt and is not planning to. Which company?</question>
+    <answer>Google</answer>
+  </qa_pair>
+
+  <qa_pair>
+    <question>Run a GEO (generative engine optimization) readiness audit on any public page and look at how the score is broken down into weighted signals. What is the numeric weight of the single highest-weighted signal?</question>
+    <answer>25</answer>
+  </qa_pair>
+
+  <qa_pair>
+    <question>Check which AI crawlers may access the root path of ortamarco.me. Counting the allowed and blocked crawlers together, and excluding deprecated tokens, how many AI crawler tokens are resolved in total?</question>
+    <answer>35</answer>
+  </qa_pair>
+</evaluation>

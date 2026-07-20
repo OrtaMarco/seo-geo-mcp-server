@@ -1,0 +1,60 @@
+{
+  "name": "seo-geo-mcp-server",
+  "version": "1.0.0",
+  "description": "MCP server for SEO and GEO (Generative Engine Optimization) audits — on-page SEO, structured data, robots.txt, sitemaps, hreflang, and AI-crawler access for ChatGPT, Claude, Perplexity and Gemini. No API keys required.",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "seo-geo-mcp-server": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "prepare": "npm run build",
+    "start": "node dist/index.js",
+    "start:http": "TRANSPORT=http node dist/index.js",
+    "dev": "tsx watch src/index.ts",
+    "inspect": "npx @modelcontextprotocol/inspector node dist/index.js",
+    "test": "node --test scripts/units.test.mjs",
+    "smoke": "node scripts/smoke-all.mjs",
+    "clean": "rm -rf dist"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "seo",
+    "geo",
+    "generative-engine-optimization",
+    "answer-engine-optimization",
+    "structured-data",
+    "json-ld",
+    "schema-org",
+    "robots-txt",
+    "sitemap",
+    "hreflang",
+    "llms-txt",
+    "ai-crawlers",
+    "core-web-vitals"
+  ],
+  "author": "Marco Orta <https://ortamarco.me>",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.17"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "cheerio": "^1.2.0",
+    "express": "^4.21.2",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}
