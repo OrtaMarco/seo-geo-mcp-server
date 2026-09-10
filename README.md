@@ -6,6 +6,10 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6)](https://www.typescriptlang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](./LICENSE)
 
+Built on the **v2 MCP SDK**: the server speaks the **2026-07-28** protocol revision
+and still accepts 2025-era clients (Claude Desktop, Claude Code, Cursor) from the
+same factory — one build, both eras, nothing to configure.
+
 Ask Claude *"how is this page doing, and will AI assistants cite it?"* and it runs a
 full audit and hands you a graded report with prioritised fixes — instead of you
 pasting a URL into six different web tools.
@@ -116,6 +120,8 @@ cannot be read as either allowed or blocked.
 
 ## Install
 
+Requires **Node.js 20+**.
+
 ```bash
 git clone https://github.com/OrtaMarco/seo-geo-mcp-server.git
 cd seo-geo-mcp-server
@@ -149,7 +155,8 @@ Restart Claude Desktop, then ask: *"Audit the SEO and GEO of example.com."*
 ## Self-host (HTTP transport)
 
 The same server speaks stateless **Streamable HTTP** for remote/multi-client use
-— handy behind a reverse proxy such as Coolify or Traefik.
+— handy behind a reverse proxy such as Coolify or Traefik. One endpoint serves
+both protocol eras; there is no session state and no `Mcp-Session-Id` to carry.
 
 ```bash
 TRANSPORT=http PORT=3000 npm start
@@ -170,8 +177,9 @@ protection (leave empty when a trusted proxy already restricts access).
 
 ```bash
 npm run dev      # tsx watch (stdio)
-npm test         # 32 deterministic unit tests (robots matcher, SPA detection, JSON-LD…)
-npm run smoke    # call all 17 tools over MCP and validate structuredContent vs outputSchema
+npm test         # 36 deterministic unit tests (robots matcher, SPA detection, JSON-LD…)
+npm run smoke    # call all 17 tools over MCP, in BOTH protocol eras, and validate
+                 # structuredContent vs outputSchema
 npm run inspect  # open the MCP Inspector against the built server
 npm run build    # type-check + emit dist/
 ```
@@ -183,9 +191,9 @@ and instructions for running it — see [`evals/README.md`](./evals/README.md).
 
 ```
 src/
-├── index.ts        # transport selection (stdio | http)
-├── server.ts       # registers every tool on one McpServer
-├── schemas.ts      # Zod outputSchema for each tool
+├── index.ts        # transport selection: serveStdio | createMcpHandler + Express
+├── server.ts       # the factory: registers every tool on one McpServer
+├── schemas.ts      # Zod 4 outputSchema for each tool
 ├── core/           # pure logic, no MCP coupling — reusable & testable
 │   ├── fetch.ts        # SSRF-safe fetch: per-hop guard, byte caps, manual redirects
 │   ├── page.ts         # HTML loading + the shared parsed-document model
