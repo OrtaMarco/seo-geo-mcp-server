@@ -3,8 +3,8 @@
  * data, content quality and image SEO.
  */
 
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { z } from "zod";
+import type { McpServer } from "@modelcontextprotocol/server";
+import * as z from "zod/v4";
 import { fail, renderFindings, respond, responseFormatField } from "../format.js";
 import {
   analyzeContent,
@@ -42,8 +42,8 @@ Args:
 Returns: { title, title_length, description, description_length, canonical, canonical_is_self, meta_robots, x_robots_tag, indexable, followable, lang, charset, viewport, score, grade, findings[] }.
 
 Example: "Are the meta tags on https://example.com correct?" -> meta_tags_check(url="https://example.com").`,
-      inputSchema: UrlInput.shape,
-      outputSchema: MetaTagsSchema.shape,
+      inputSchema: UrlInput,
+      outputSchema: MetaTagsSchema,
       annotations: READ_ONLY,
     },
     async ({ url, response_format }) => {
@@ -97,8 +97,8 @@ Args:
 Returns: { open_graph{}, twitter{}, og_image_url, og_image_reachable, og_image_status, score, grade, findings[] }.
 
 Example: "Why does my link preview look broken on LinkedIn?" -> social_preview_check(url="https://example.com/post").`,
-      inputSchema: SocialInput.shape,
-      outputSchema: SocialSchema.shape,
+      inputSchema: SocialInput,
+      outputSchema: SocialSchema,
       annotations: READ_ONLY,
     },
     async ({ url, check_image, response_format }) => {
@@ -146,8 +146,8 @@ Args:
 Returns: { headings[{level, text, skips_level}], h1_count, h1_text[], level_skips, empty_headings, question_headings[], outline, score, grade, findings[] }.
 
 Example: "Show me the heading outline of https://example.com/guide" -> heading_structure(url="https://example.com/guide").`,
-      inputSchema: UrlInput.shape,
-      outputSchema: HeadingSchema.shape,
+      inputSchema: UrlInput,
+      outputSchema: HeadingSchema,
       annotations: READ_ONLY,
     },
     async ({ url, response_format }) => {
@@ -193,8 +193,8 @@ Args:
 Returns: { json_ld_blocks, microdata_items, parse_errors[], items[{type, properties[], missing_required[], missing_recommended[], valid}], types_found[], has_organization, has_breadcrumb, score, grade, findings[] }.
 
 Example: "Does https://example.com/product have valid Product schema?" -> structured_data_check(url="https://example.com/product").`,
-      inputSchema: UrlInput.shape,
-      outputSchema: StructuredDataSchema.shape,
+      inputSchema: UrlInput,
+      outputSchema: StructuredDataSchema,
       annotations: READ_ONLY,
     },
     async ({ url, response_format }) => {
@@ -247,8 +247,8 @@ Args:
 Returns: { word_count, sentence_count, paragraph_count, avg_words_per_sentence, reading_ease, reading_level, reading_time_minutes, thin_content, text_to_html_ratio, used_content_landmark, top_terms[{term, count, density}], score, grade, findings[] }.
 
 Example: "Is the content on https://example.com/post too thin?" -> content_analysis(url="https://example.com/post").`,
-      inputSchema: UrlInput.shape,
-      outputSchema: ContentSchema.shape,
+      inputSchema: UrlInput,
+      outputSchema: ContentSchema,
       annotations: READ_ONLY,
     },
     async ({ url, response_format }) => {
@@ -293,8 +293,8 @@ Args:
 Returns: { total_images, missing_alt, decorative_alt, missing_dimensions, lazy_loaded, modern_format, legacy_format, images[], score, grade, findings[] }.
 
 Example: "Which images on https://example.com are missing alt text?" -> image_seo_check(url="https://example.com").`,
-      inputSchema: UrlInput.shape,
-      outputSchema: ImageSchema.shape,
+      inputSchema: UrlInput,
+      outputSchema: ImageSchema,
       annotations: READ_ONLY,
     },
     async ({ url, response_format }) => {

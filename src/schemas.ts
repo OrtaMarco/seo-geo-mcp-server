@@ -1,12 +1,16 @@
 /**
- * Zod output schemas for every tool. Each tool's `outputSchema` is the `.shape`
- * of the matching schema here, and `respond()` attaches the data object as
- * `structuredContent` (validated by the SDK against that schema).
+ * Zod output schemas for every tool. Each schema here is a tool's
+ * `outputSchema` verbatim — v2 takes the schema object, not its raw shape —
+ * and `respond()` attaches the data object as `structuredContent` (validated
+ * by the SDK against that schema).
+ *
+ * Authored with Zod 4 via the `zod/v4` subpath: the v2 SDK requires >=4.2 and
+ * fails quietly on the first `tools/list` with Zod 3.
  *
  * Kept in sync with the interfaces in `core/*`.
  */
 
-import { z } from "zod";
+import * as z from "zod/v4";
 
 const Finding = z.object({ severity: z.string(), message: z.string() });
 const Findings = z.array(Finding);
@@ -39,8 +43,8 @@ export const MetaTagsSchema = z.object({
 export const SocialSchema = z.object({
   url: z.string(),
   final_url: z.string(),
-  open_graph: z.record(z.string()),
-  twitter: z.record(z.string()),
+  open_graph: z.record(z.string(), z.string()),
+  twitter: z.record(z.string(), z.string()),
   og_image_url: z.string().nullable(),
   og_image_reachable: z.boolean().nullable(),
   og_image_status: z.number().nullable(),

@@ -3,8 +3,8 @@
  * host canonicalisation.
  */
 
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { z } from "zod";
+import type { McpServer } from "@modelcontextprotocol/server";
+import * as z from "zod/v4";
 import { fail, renderFindings, respond, responseFormatField } from "../format.js";
 import { analyzeHreflang, analyzeLinks } from "../core/seo-audit.js";
 import { loadPage } from "../core/page.js";
@@ -39,8 +39,8 @@ Returns: { found, status, group_count, sitemaps[], blocks_everything, groups[{ag
 
 Example: "What does example.com's robots.txt allow?" -> robots_txt_check(site="example.com").
 For AI-crawler specifics use \`ai_crawler_access\` instead — it resolves each known AI bot against these rules.`,
-      inputSchema: SiteInput.shape,
-      outputSchema: RobotsSchema.shape,
+      inputSchema: SiteInput,
+      outputSchema: RobotsSchema,
       annotations: READ_ONLY,
     },
     async ({ site, response_format }) => {
@@ -113,8 +113,8 @@ Args:
 Returns: { found, type, url_count, child_sitemaps[], with_lastmod, invalid_lastmod[], newest_lastmod, off_origin_urls[], exceeds_url_limit, discovered_via, score, grade, findings[] }.
 
 Example: "Check the sitemap for example.com" -> sitemap_check(site="example.com").`,
-      inputSchema: SitemapInput.shape,
-      outputSchema: SitemapSchema.shape,
+      inputSchema: SitemapInput,
+      outputSchema: SitemapSchema,
       annotations: READ_ONLY,
     },
     async ({ site, sitemap_url, follow_children, response_format }) => {
@@ -175,8 +175,8 @@ Args:
 Returns: { total_links, internal_links, external_links, nofollow_links, empty_anchor_text, generic_anchor_text[], external_domains[{domain, count}], checked_count, broken[], score, grade, findings[] }.
 
 Example: "Are there broken links on https://example.com/resources?" -> link_audit(url="https://example.com/resources", check_broken=true).`,
-      inputSchema: LinkInput.shape,
-      outputSchema: LinkSchema.shape,
+      inputSchema: LinkInput,
+      outputSchema: LinkSchema,
       annotations: READ_ONLY,
     },
     async ({ url, check_broken, sample_size, response_format }) => {
@@ -233,8 +233,8 @@ Args:
 Returns: { declared_lang, entries[{hreflang, href, valid_code, is_self, reciprocates}], has_x_default, self_referencing, duplicate_codes[], invalid_codes[], findings[] }.
 
 Example: "Is hreflang set up correctly on https://example.com/es/pagina?" -> hreflang_check(url="https://example.com/es/pagina", check_reciprocity=true).`,
-      inputSchema: HreflangInput.shape,
-      outputSchema: HreflangSchema.shape,
+      inputSchema: HreflangInput,
+      outputSchema: HreflangSchema,
       annotations: READ_ONLY,
     },
     async ({ url, check_reciprocity, response_format }) => {
@@ -284,8 +284,8 @@ Args:
 Returns: { final_url, final_status, hops[{url, status, location}], hop_count, https_upgrade, ends_https, has_loop, has_temporary_redirect, elapsed_ms, findings[] }.
 
 Example: "Where does http://example.com/old-page end up?" -> redirect_trace(url="http://example.com/old-page").`,
-      inputSchema: z.object({ url: urlField, response_format: responseFormatField }).shape,
-      outputSchema: RedirectSchema.shape,
+      inputSchema: z.object({ url: urlField, response_format: responseFormatField }),
+      outputSchema: RedirectSchema,
       annotations: READ_ONLY,
     },
     async ({ url, response_format }) => {
@@ -328,8 +328,8 @@ Args:
 Returns: { domain, variants[{variant, reachable, status, final_url, hop_count, redirect_statuses[]}], canonical_url, converges, distinct_endpoints[], forces_https, score, grade, findings[] }.
 
 Example: "Do all versions of example.com redirect to one URL?" -> canonical_host_check(site="example.com").`,
-      inputSchema: SiteInput.shape,
-      outputSchema: CanonicalHostSchema.shape,
+      inputSchema: SiteInput,
+      outputSchema: CanonicalHostSchema,
       annotations: READ_ONLY,
     },
     async ({ site, response_format }) => {

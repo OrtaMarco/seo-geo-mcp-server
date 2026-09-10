@@ -3,8 +3,8 @@
  * check that decides whether AI crawlers can see the content at all.
  */
 
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { z } from "zod";
+import type { McpServer } from "@modelcontextprotocol/server";
+import * as z from "zod/v4";
 import { fail, renderFindings, respond, responseFormatField } from "../format.js";
 import { analyzeAiCrawlerAccess, fetchRobots } from "../core/robots.js";
 import { analyzeRendering, checkLlmsTxt } from "../core/geo.js";
@@ -52,8 +52,8 @@ Args:
 Returns: { crawlers[{token, vendor, purpose, allowed, via_wildcard, matched_rule, respects_robots_txt, compliance_note, provenance, quirk}], allowed_count, blocked_count, blocked_citation_critical[], unenforceable_blocks[], undocumented_vendors[], findings[] }.
 
 Example: "Can ChatGPT and Perplexity crawl example.com?" -> ai_crawler_access(site="example.com").`,
-      inputSchema: AiCrawlerInput.shape,
-      outputSchema: AiCrawlerSchema.shape,
+      inputSchema: AiCrawlerInput,
+      outputSchema: AiCrawlerSchema,
       annotations: READ_ONLY,
     },
     async ({ site, path, include_deprecated, response_format }) => {
@@ -119,8 +119,8 @@ Args:
 Returns: { found, status, full_variant_found, bytes, title, has_summary_blockquote, sections[], link_count, spec_compliant, adoption_status, findings[] }.
 
 Example: "Does example.com publish an llms.txt?" -> llms_txt_check(site="example.com").`,
-      inputSchema: SiteInput.shape,
-      outputSchema: LlmsTxtSchema.shape,
+      inputSchema: SiteInput,
+      outputSchema: LlmsTxtSchema,
       annotations: READ_ONLY,
     },
     async ({ site, response_format }) => {
@@ -170,8 +170,8 @@ Args:
 Returns: { renders_without_js, server_text_words, script_bytes, html_bytes, spa_shell_detected, framework_hint, findings[] }.
 
 Example: "Can ChatGPT actually read https://example.com/app?" -> render_check(url="https://example.com/app").`,
-      inputSchema: z.object({ url: urlField, response_format: responseFormatField }).shape,
-      outputSchema: RenderingSchema.shape,
+      inputSchema: z.object({ url: urlField, response_format: responseFormatField }),
+      outputSchema: RenderingSchema,
       annotations: READ_ONLY,
     },
     async ({ url, response_format }) => {

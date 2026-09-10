@@ -2,8 +2,8 @@
  * Flagship composite audits: `seo_audit` and `geo_audit`.
  */
 
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { z } from "zod";
+import type { McpServer } from "@modelcontextprotocol/server";
+import * as z from "zod/v4";
 import { fail, renderFindings, respond, responseFormatField } from "../format.js";
 import { runGeoAudit, runSeoAudit } from "../core/seo-audit.js";
 import { validateUrl } from "../core/validate.js";
@@ -45,8 +45,8 @@ Returns: { score, grade, indexable, sections[{id, label, score, grade, weight, i
 Example: "Audit the SEO of https://example.com/pricing" -> seo_audit(url="https://example.com/pricing").
 Note: a noindex page or a site-wide robots.txt block caps the score, because nothing else matters until that is fixed.
 Errors: returns an error if the URL is unreachable, non-HTML, or returns an HTTP error.`,
-      inputSchema: SeoAuditInput.shape,
-      outputSchema: SeoAuditSchema.shape,
+      inputSchema: SeoAuditInput,
+      outputSchema: SeoAuditSchema,
       annotations: READ_ONLY,
     },
     async ({ url, include_geo, check_broken_links, response_format }) => {
@@ -121,8 +121,8 @@ Returns: { geo{score, grade, signals[], top_recommendations[]}, rendering, crawl
 
 Example: "Is https://example.com/guide ready to be cited by ChatGPT?" -> geo_audit(url="https://example.com/guide").
 Note: llms.txt presence is reported but deliberately NOT scored — it is a community proposal with no committed vendor support, and Google has stated it does not use it.`,
-      inputSchema: GeoAuditInput.shape,
-      outputSchema: GeoAuditSchema.shape,
+      inputSchema: GeoAuditInput,
+      outputSchema: GeoAuditSchema,
       annotations: READ_ONLY,
     },
     async ({ url, response_format }) => {

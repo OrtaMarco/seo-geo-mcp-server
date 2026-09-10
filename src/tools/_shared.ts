@@ -3,8 +3,8 @@
  * and error mapping.
  */
 
-import { z } from "zod";
-import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import * as z from "zod/v4";
+import type { CallToolResult } from "@modelcontextprotocol/server";
 import { fail, responseFormatField } from "../format.js";
 import { errMessage } from "../core/validate.js";
 import { HttpStatusError, NotHtmlError } from "../core/page.js";
