@@ -1,19 +1,22 @@
 /**
  * SSRF-safe HTTP client shared by every tool.
  *
- * Redirects are followed *manually* so each hop is re-checked by the SSRF guard
- * — otherwise a public URL could 30x-redirect into an internal address. Response
+ * Every connection goes through the guarded dispatcher, which checks the
+ * address a socket is about to use (see netguard.ts). Redirects are followed
+ * *manually* so each hop's URL is screened too, and a chain that revisits a URL
+ * is reported as a loop instead of being walked until the hop limit. Response
  * bodies are read through a byte cap so a hostile or accidental multi-gigabyte
  * page cannot exhaust memory.
  */
 
+import { fetch as undiciFetch, type Agent, type Response } from "undici";
 import {
   DEFAULT_TIMEOUT_MS,
   MAX_HTML_BYTES,
   MAX_REDIRECTS,
   USER_AGENT,
 } from "../constants.js";
-import { resolvesToPrivate } from "./validate.js";
+import { assertPublicTarget, guardedDispatcher } from "./netguard.js";
 
 /** One hop in a redirect chain. */
 export interface RedirectHop {
@@ -30,6 +33,8 @@ export interface FetchResult {
   status: number;
   headers: Record<string, string>;
   body: string;
+  /** The body as bytes, only when `raw` was requested. */
+  rawBody: Uint8Array | null;
   /** Bytes actually read (after the cap). */
   bytes: number;
   /** True when the body was cut short by the byte cap. */
@@ -37,6 +42,8 @@ export interface FetchResult {
   /** Wall-clock time for the whole chain, in milliseconds. */
   elapsedMs: number;
   redirects: RedirectHop[];
+  /** True when the chain redirected back to a URL it had already visited. */
+  redirectLoop: boolean;
 }
 
 export interface FetchOptions {
@@ -52,17 +59,21 @@ export interface FetchOptions {
   timeoutMs?: number;
   /** Accept header. Defaults to a browser-like HTML accept string. */
   accept?: string;
+  /** Also return the body as bytes (for gzip payloads). */
+  raw?: boolean;
+  /** Override the guarded dispatcher (tests). */
+  dispatcher?: Agent;
 }
 
 const DEFAULT_ACCEPT =
   "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8";
 
-/** Read a response body up to `maxBytes`, decoding as UTF-8. */
+/** Read a response body up to `maxBytes`. */
 async function readCapped(
   res: Response,
   maxBytes: number,
-): Promise<{ text: string; bytes: number; truncated: boolean }> {
-  if (!res.body) return { text: "", bytes: 0, truncated: false };
+): Promise<{ data: Uint8Array; bytes: number; truncated: boolean }> {
+  if (!res.body) return { data: new Uint8Array(0), bytes: 0, truncated: false };
 
   const reader = res.body.getReader();
   const chunks: Uint8Array[] = [];
@@ -95,15 +106,10 @@ async function readCapped(
     merged.set(chunk, offset);
     offset += chunk.length;
   }
-
-  return {
-    text: new TextDecoder("utf-8", { fatal: false }).decode(merged),
-    bytes,
-    truncated,
-  };
+  return { data: merged, bytes, truncated };
 }
 
-function headersToObject(headers: Headers): Record<string, string> {
+function headersToObject(headers: Response["headers"]): Record<string, string> {
   const out: Record<string, string> = {};
   headers.forEach((value, key) => {
     out[key.toLowerCase()] = value;
@@ -111,12 +117,18 @@ function headersToObject(headers: Headers): Record<string, string> {
   return out;
 }
 
+/** A URL's identity for loop detection: the fragment never reaches the server. */
+function visitKey(url: URL): string {
+  const copy = new URL(url);
+  copy.hash = "";
+  return copy.toString();
+}
+
 /**
- * Fetch a URL, following redirects one hop at a time and re-running the SSRF
- * guard on every hop.
+ * Fetch a URL, following redirects one hop at a time and screening every hop.
  *
- * @throws if any hop resolves to a private address, a redirect target is not
- * http(s), or the chain exceeds `maxRedirects`.
+ * @throws if any hop targets a private address, a redirect target is not
+ * http(s), or the chain exceeds `maxRedirects` without looping.
  */
 export async function safeFetch(
   start: URL,
@@ -129,20 +141,20 @@ export async function safeFetch(
     maxRedirects = MAX_REDIRECTS,
     timeoutMs = DEFAULT_TIMEOUT_MS,
     accept = DEFAULT_ACCEPT,
+    raw = false,
+    dispatcher = guardedDispatcher,
   } = options;
 
   const began = Date.now();
   const redirects: RedirectHop[] = [];
+  const visited = new Set<string>();
   let current = start;
 
   for (let hop = 0; hop <= maxRedirects; hop++) {
-    if (await resolvesToPrivate(current.hostname)) {
-      throw new Error(
-        `Refusing to fetch ${current.hostname}: it resolves to a private or reserved address.`,
-      );
-    }
+    assertPublicTarget(current.hostname);
+    visited.add(visitKey(current));
 
-    const res = await fetch(current.toString(), {
+    const res = await undiciFetch(current, {
       method,
       redirect: "manual",
       headers: {
@@ -150,6 +162,7 @@ export async function safeFetch(
         accept,
         "accept-language": "en-US,en;q=0.9",
       },
+      dispatcher,
       signal: AbortSignal.timeout(timeoutMs),
     });
 
@@ -167,13 +180,28 @@ export async function safeFetch(
       }
       // Drain the redirect response so the socket is not left dangling.
       await res.body?.cancel().catch(() => {});
+      if (visited.has(visitKey(next))) {
+        return {
+          url: start.toString(),
+          finalUrl: current.toString(),
+          status: res.status,
+          headers: headersToObject(res.headers),
+          body: "",
+          rawBody: null,
+          bytes: 0,
+          truncated: false,
+          elapsedMs: Date.now() - began,
+          redirects,
+          redirectLoop: true,
+        };
+      }
       current = next;
       continue;
     }
 
-    const { text, bytes, truncated } =
+    const { data, bytes, truncated } =
       method === "HEAD"
-        ? { text: "", bytes: 0, truncated: false }
+        ? { data: new Uint8Array(0), bytes: 0, truncated: false }
         : await readCapped(res, maxBytes);
 
     return {
@@ -181,11 +209,13 @@ export async function safeFetch(
       finalUrl: current.toString(),
       status: res.status,
       headers: headersToObject(res.headers),
-      body: text,
+      body: new TextDecoder("utf-8", { fatal: false }).decode(data),
+      rawBody: raw ? data : null,
       bytes,
       truncated,
       elapsedMs: Date.now() - began,
       redirects,
+      redirectLoop: false,
     };
   }
 

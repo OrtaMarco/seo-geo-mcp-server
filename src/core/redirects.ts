@@ -35,7 +35,9 @@ export async function traceRedirects(url: URL): Promise<RedirectReport> {
 
   const hops = res.redirects;
   const seen = new Set<string>();
-  let hasLoop = false;
+  // safeFetch stops as soon as a hop returns to a visited URL; the set below
+  // still catches loops that only differ by normalisation (trailing slash, case).
+  let hasLoop = res.redirectLoop;
   for (const hop of hops) {
     const key = normalizeForCompare(hop.url);
     if (seen.has(key)) hasLoop = true;

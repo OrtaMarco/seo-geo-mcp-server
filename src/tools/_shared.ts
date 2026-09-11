@@ -7,7 +7,7 @@ import * as z from "zod/v4";
 import type { CallToolResult } from "@modelcontextprotocol/server";
 import { fail, responseFormatField } from "../format.js";
 import { errMessage } from "../core/validate.js";
-import { HttpStatusError, NotHtmlError } from "../core/page.js";
+import { HttpStatusError, NotHtmlError, TooDeepError } from "../core/page.js";
 
 /** Every tool in this server is a read-only network probe. */
 export const READ_ONLY = {
@@ -64,11 +64,11 @@ function flattenError(err: unknown): string {
  * generic prefix so the caller still knows which operation failed.
  */
 export function toFailure(context: string, err: unknown): CallToolResult {
-  if (err instanceof HttpStatusError || err instanceof NotHtmlError) {
+  if (err instanceof HttpStatusError || err instanceof NotHtmlError || err instanceof TooDeepError) {
     return fail(err.message);
   }
   const message = flattenError(err);
-  if (/refusing to fetch/i.test(message)) {
+  if (/refusing to (fetch|connect)/i.test(message)) {
     return fail(`${message} This server only analyses publicly reachable sites.`);
   }
   if (/timeout|aborted|ETIMEDOUT/i.test(message)) {

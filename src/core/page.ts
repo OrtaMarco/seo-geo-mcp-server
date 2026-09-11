@@ -8,6 +8,7 @@
 
 import * as cheerio from "cheerio";
 import type { CheerioAPI } from "cheerio";
+import { MAX_HTML_DEPTH } from "../constants.js";
 import { safeFetch, type FetchOptions, type RedirectHop } from "./fetch.js";
 
 export interface PageDoc {
@@ -62,6 +63,64 @@ export class HttpStatusError extends Error {
   }
 }
 
+/** Thrown when a document nests so deeply that parsing it would stall the server. */
+export class TooDeepError extends Error {
+  constructor(readonly finalUrl: string) {
+    super(
+      `${finalUrl} nests elements more than ${MAX_HTML_DEPTH} levels deep. Browsers flatten a tree that deep, and parsing it would stall this server, so the page was not analysed.`,
+    );
+    this.name = "TooDeepError";
+  }
+}
+
+const VOID_ELEMENTS = new Set([
+  "area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track", "wbr",
+]);
+/** Elements whose end tag HTML lets authors omit; counting them would inflate depth on valid pages. */
+const OPTIONAL_END = new Set([
+  "p", "li", "dt", "dd", "tr", "td", "th", "thead", "tbody", "tfoot", "option", "optgroup", "colgroup", "rb", "rt", "rtc", "rp", "html", "head", "body",
+]);
+const RAW_TEXT = new Set(["script", "style", "textarea", "title", "xmp", "noscript", "template"]);
+
+/**
+ * Whether `html` nests deeper than `limit`, measured with one linear scan (no
+ * regex backtracking, no DOM). Comments and raw-text elements are skipped;
+ * void and optional-end elements do not count toward depth.
+ */
+export function exceedsNestingDepth(html: string, limit = MAX_HTML_DEPTH): boolean {
+  const lower = html.toLowerCase();
+  let depth = 0;
+  let i = 0;
+  while ((i = lower.indexOf("<", i)) !== -1) {
+    if (lower.startsWith("<!--", i)) {
+      const end = lower.indexOf("-->", i + 4);
+      if (end === -1) return false;
+      i = end + 3;
+      continue;
+    }
+    const close = lower.indexOf(">", i);
+    if (close === -1) return false;
+    const m = /^<(\/?)([a-z][a-z0-9:-]*)/.exec(lower.slice(i, Math.min(close + 1, i + 64)));
+    if (!m) {
+      i++;
+      continue;
+    }
+    const [, slash, name] = m as unknown as [string, string, string];
+    if (!slash && RAW_TEXT.has(name)) {
+      const end = lower.indexOf(`</${name}`, close);
+      if (end === -1) return false;
+      i = end;
+      continue;
+    }
+    if (!VOID_ELEMENTS.has(name) && !OPTIONAL_END.has(name)) {
+      if (slash) depth = Math.max(0, depth - 1);
+      else if (lower[close - 1] !== "/" && ++depth > limit) return true;
+    }
+    i = close + 1;
+  }
+  return false;
+}
+
 function looksLikeHtml(contentType: string, body: string): boolean {
   if (/text\/html|application\/xhtml\+xml/i.test(contentType)) return true;
   // Some servers send text/plain or no type at all for real HTML documents.
@@ -87,6 +146,9 @@ export async function loadPage(
   }
   if (!looksLikeHtml(contentType, res.body)) {
     throw new NotHtmlError(res.finalUrl, contentType);
+  }
+  if (exceedsNestingDepth(res.body)) {
+    throw new TooDeepError(res.finalUrl);
   }
 
   return {
@@ -126,9 +188,11 @@ export function pageOrigin(page: PageDoc): string {
  * Used for word counts, readability and GEO extractability checks.
  */
 export function visibleText(page: PageDoc): string {
-  const $ = cheerio.load(page.html); // a private copy: we mutate it
-  $("script, style, noscript, template, svg, iframe").remove();
-  return $("body").text().replace(/\s+/g, " ").trim();
+  // A clone of the already-parsed tree, not a second parse: we mutate it.
+  const root = page.$.root().clone();
+  root.find("script, style, noscript, template, svg, iframe").remove();
+  const body = root.find("body");
+  return (body.length ? body.text() : root.text()).replace(/\s+/g, " ").trim();
 }
 
 /**
@@ -137,11 +201,11 @@ export function visibleText(page: PageDoc): string {
  * nav, footer, aside) is dropped so word counts reflect actual content.
  */
 export function mainText(page: PageDoc): { text: string; usedLandmark: boolean } {
-  const $ = cheerio.load(page.html);
-  $("script, style, noscript, template, svg, iframe").remove();
+  const root = page.$.root().clone();
+  root.find("script, style, noscript, template, svg, iframe").remove();
 
   for (const selector of ["main", "article", '[role="main"]']) {
-    const node = $(selector).first();
+    const node = root.find(selector).first();
     if (node.length && node.text().trim().length > 200) {
       return {
         text: node.text().replace(/\s+/g, " ").trim(),
@@ -150,6 +214,7 @@ export function mainText(page: PageDoc): { text: string; usedLandmark: boolean }
     }
   }
 
-  $("header, nav, footer, aside").remove();
-  return { text: $("body").text().replace(/\s+/g, " ").trim(), usedLandmark: false };
+  root.find("header, nav, footer, aside").remove();
+  const body = root.find("body");
+  return { text: (body.length ? body.text() : root.text()).replace(/\s+/g, " ").trim(), usedLandmark: false };
 }

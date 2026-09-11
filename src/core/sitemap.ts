@@ -8,9 +8,9 @@
 
 import { gunzipSync } from "node:zlib";
 import * as cheerio from "cheerio";
-import { SITEMAP_MAX_BYTES, SITEMAP_MAX_URLS } from "../constants.js";
+import { SITEMAP_MAX_BYTES, SITEMAP_MAX_URLS, SITEMAP_READ_BYTES } from "../constants.js";
 import { clampScore, scoreToGrade, type Finding } from "../format.js";
-import { safeFetch } from "./fetch.js";
+import { safeFetch, type FetchResult } from "./fetch.js";
 import { fetchRobots } from "./robots.js";
 import { validateUrl } from "./validate.js";
 
@@ -65,17 +65,31 @@ interface ParsedSitemap {
   children: string[];
 }
 
-/** Decompress a gzipped sitemap body when the URL or content type says so. */
-function maybeGunzip(body: string, url: string, contentType: string): string {
-  if (!url.endsWith(".gz") && !/gzip/i.test(contentType)) return body;
+/**
+ * The sitemap's XML text. A `.gz` sitemap served as a file (not as
+ * Content-Encoding, which the transport already undoes) is gunzipped from the
+ * raw bytes — decoding them as UTF-8 first destroys the gzip stream — with the
+ * output capped, so a compression bomb cannot expand past the read limit.
+ */
+export function sitemapText(res: FetchResult, url: string): { xml: string; decompressedTooLarge: boolean } {
+  const bytes = res.rawBody;
+  const isGzip = bytes !== null && bytes.length >= 2 && bytes[0] === 0x1f && bytes[1] === 0x8b;
+  if (!isGzip) return { xml: res.body, decompressedTooLarge: false };
   try {
-    // `body` was decoded as UTF-8; recover the original bytes via latin1, which
-    // is byte-preserving for the 0x00–0xFF range.
-    return gunzipSync(Buffer.from(body, "latin1")).toString("utf8");
-  } catch {
-    return body; // already decompressed by the transport layer
+    return { xml: gunzipSync(bytes, { maxOutputLength: SITEMAP_READ_BYTES }).toString("utf8"), decompressedTooLarge: false };
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ERR_BUFFER_TOO_LARGE") {
+      return { xml: "", decompressedTooLarge: true };
+    }
+    throw new Error(`${url} looks gzipped but could not be decompressed: ${err instanceof Error ? err.message : String(err)}`);
   }
 }
+
+const SITEMAP_FETCH = {
+  accept: "application/xml,text/xml,application/gzip,*/*;q=0.8",
+  maxBytes: SITEMAP_READ_BYTES,
+  raw: true,
+} as const;
 
 function parseSitemapXml(xml: string): ParsedSitemap {
   const $ = cheerio.load(xml, { xmlMode: true });
@@ -120,7 +134,7 @@ export async function discoverSitemap(
   if (explicit) {
     const parsed = validateUrl(explicit);
     if (parsed) return { url: parsed, via: "explicit" };
-    return null;
+    throw new Error(`sitemap_url '${explicit}' is not a valid public http(s) URL.`);
   }
 
   try {
@@ -137,7 +151,11 @@ export async function discoverSitemap(
   for (const path of CONVENTIONAL_PATHS) {
     const candidate = new URL(path, origin);
     try {
-      const res = await safeFetch(candidate, { method: "HEAD", timeoutMs: 8000 });
+      let res = await safeFetch(candidate, { method: "HEAD", timeoutMs: 8000 });
+      // Plenty of servers refuse HEAD; ask again with a tiny GET before moving on.
+      if (res.status === 405 || res.status === 501) {
+        res = await safeFetch(candidate, { method: "GET", timeoutMs: 8000, maxBytes: 1024 });
+      }
       if (res.status >= 200 && res.status < 300) {
         return { url: candidate, via: "conventional-path" };
       }
@@ -197,10 +215,7 @@ export async function analyzeSitemap(
     };
   }
 
-  const res = await safeFetch(discovered.url, {
-    accept: "application/xml,text/xml,*/*;q=0.8",
-    maxBytes: SITEMAP_MAX_BYTES,
-  });
+  const res = await safeFetch(discovered.url, SITEMAP_FETCH);
 
   if (res.status < 200 || res.status >= 300) {
     return {
@@ -231,11 +246,15 @@ export async function analyzeSitemap(
     };
   }
 
-  const xml = maybeGunzip(res.body, discovered.url.toString(), res.headers["content-type"] ?? "");
-  const parsed = parseSitemapXml(xml);
+  const main = sitemapText(res, discovered.url.toString());
+  const parsed = parseSitemapXml(main.xml);
 
-  let allEntries = [...parsed.entries];
+  // Loops and push-per-item, never spread: a 50 000-URL child spread into
+  // push() or Math.max() blows the call stack.
+  const allEntries: SitemapEntry[] = [];
+  for (const entry of parsed.entries) allEntries.push(entry);
   let followed = 0;
+  let readCapHit = res.truncated || main.decompressedTooLarge;
 
   // Walk index children so URL counts reflect the whole site, not just the index.
   if (parsed.type === "sitemapindex" && followChildren > 0) {
@@ -243,21 +262,20 @@ export async function analyzeSitemap(
       const childUrl = validateUrl(child);
       if (!childUrl) continue;
       try {
-        const childRes = await safeFetch(childUrl, {
-          accept: "application/xml,text/xml,*/*;q=0.8",
-          maxBytes: SITEMAP_MAX_BYTES,
-        });
+        const childRes = await safeFetch(childUrl, SITEMAP_FETCH);
         if (childRes.status >= 200 && childRes.status < 300) {
-          const childXml = maybeGunzip(
-            childRes.body,
-            childUrl.toString(),
-            childRes.headers["content-type"] ?? "",
-          );
-          allEntries.push(...parseSitemapXml(childXml).entries);
+          const childText = sitemapText(childRes, childUrl.toString());
+          if (childRes.truncated || childText.decompressedTooLarge) readCapHit = true;
+          for (const entry of parseSitemapXml(childText.xml).entries) allEntries.push(entry);
           followed++;
+        } else {
+          findings.push({ severity: "warn", message: `Child sitemap ${child} returned HTTP ${childRes.status}.` });
         }
-      } catch {
-        findings.push({ severity: "warn", message: `Child sitemap ${child} could not be fetched.` });
+      } catch (err) {
+        findings.push({
+          severity: "warn",
+          message: `Child sitemap ${child} could not be read: ${err instanceof Error ? err.message : String(err)}`,
+        });
       }
     }
   }
@@ -294,11 +312,17 @@ export async function analyzeSitemap(
   }
 
   const withLastmod = allEntries.filter((e) => e.lastmod).length;
-  const newest = lastmodDates.length ? new Date(Math.max(...lastmodDates)).toISOString() : null;
-  const oldest = lastmodDates.length ? new Date(Math.min(...lastmodDates)).toISOString() : null;
+  let newestTime = -Infinity;
+  let oldestTime = Infinity;
+  for (const time of lastmodDates) {
+    if (time > newestTime) newestTime = time;
+    if (time < oldestTime) oldestTime = time;
+  }
+  const newest = lastmodDates.length ? new Date(newestTime).toISOString() : null;
+  const oldest = lastmodDates.length ? new Date(oldestTime).toISOString() : null;
 
   const exceedsUrlLimit = allEntries.length > SITEMAP_MAX_URLS;
-  const exceedsSizeLimit = res.bytes > SITEMAP_MAX_BYTES || res.truncated;
+  const exceedsSizeLimit = res.bytes > SITEMAP_MAX_BYTES;
 
   // --- scoring
   let score = 40;
@@ -355,6 +379,12 @@ export async function analyzeSitemap(
 
   if (exceedsUrlLimit) {
     findings.push({ severity: "fail", message: `${allEntries.length} URLs exceeds the ${SITEMAP_MAX_URLS.toLocaleString()} limit. Split it and use a sitemap index.` });
+  }
+  if (readCapHit) {
+    findings.push({
+      severity: "warn",
+      message: `At least one sitemap is larger than the ${Math.round(SITEMAP_READ_BYTES / 1_048_576)} MiB this server reads, so it was only partly analysed and the counts are a lower bound. Split large sitemaps behind an index.`,
+    });
   }
   if (exceedsSizeLimit) {
     findings.push({ severity: "fail", message: `The sitemap exceeds the 50 MiB uncompressed limit. Split it into several files.` });

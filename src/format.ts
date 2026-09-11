@@ -8,7 +8,7 @@
 
 import * as z from "zod/v4";
 import type { CallToolResult } from "@modelcontextprotocol/server";
-import { CHARACTER_LIMIT } from "./constants.js";
+import { CHARACTER_LIMIT, MAX_STRUCTURED_ITEMS } from "./constants.js";
 
 export enum ResponseFormat {
   MARKDOWN = "markdown",
@@ -28,7 +28,7 @@ export function truncate(text: string): string {
   if (text.length <= CHARACTER_LIMIT) return text;
   return (
     text.slice(0, CHARACTER_LIMIT) +
-    `\n\n…[truncated ${text.length - CHARACTER_LIMIT} characters — request response_format='json' or a narrower query for the full payload]`
+    `\n\n…[truncated ${text.length - CHARACTER_LIMIT} characters — the result is also in the tool's structuredContent; narrow the query to see it here]`
   );
 }
 
@@ -53,12 +53,42 @@ export function respond(
   format: ResponseFormat,
   toMarkdown: () => string,
 ): CallToolResult {
+  const structured = capLists(data);
   const text =
-    format === ResponseFormat.JSON ? JSON.stringify(data, null, 2) : toMarkdown();
+    format === ResponseFormat.JSON ? JSON.stringify(structured, null, 2) : toMarkdown();
   return {
     content: [{ type: "text", text: truncate(text) }],
-    structuredContent: data as Record<string, unknown>,
+    structuredContent: structured as Record<string, unknown>,
   };
+}
+
+/**
+ * Cap every list in a result at MAX_STRUCTURED_ITEMS. The lists come from the
+ * audited site (robots warnings, hreflang entries, sitemap children…), so a
+ * hostile or merely enormous site could otherwise make one result megabytes
+ * long. When anything is cut, a finding says so.
+ */
+export function capLists<T>(data: T): T {
+  let cut = 0;
+  const walk = (value: unknown): unknown => {
+    if (Array.isArray(value)) {
+      if (value.length > MAX_STRUCTURED_ITEMS) cut++;
+      return value.slice(0, MAX_STRUCTURED_ITEMS).map(walk);
+    }
+    if (value && typeof value === "object") {
+      return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, walk(v)]));
+    }
+    return value;
+  };
+  const capped = walk(data) as T;
+  const findings = (capped as { findings?: unknown }).findings;
+  if (cut > 0 && Array.isArray(findings)) {
+    findings.push({
+      severity: "info",
+      message: `${cut} list(s) in this result were longer than ${MAX_STRUCTURED_ITEMS} items and were cut to that; counts and scores cover everything.`,
+    } satisfies Finding);
+  }
+  return capped;
 }
 
 /** Small helper: render a checklist line with a status glyph. */

@@ -20,6 +20,7 @@ export function registerGeoTools(server: McpServer): void {
     site: z.string().min(1).describe("Domain or any URL on it, e.g. 'example.com'."),
     path: z
       .string()
+      .max(2048)
       .default("/")
       .describe("Path to test the rules against, e.g. '/blog/post'. Defaults to '/'."),
     include_deprecated: z
@@ -61,7 +62,9 @@ Example: "Can ChatGPT and Perplexity crawl example.com?" -> ai_crawler_access(si
       if (!parsed) return fail(`Error: '${site}' is not a valid domain or URL.`);
       try {
         const robots = await fetchRobots(parsed.origin);
-        const report = analyzeAiCrawlerAccess(robots, path, include_deprecated);
+        // Robots rules are root-relative; 'blog/post' would otherwise match nothing and read as allowed.
+        const testPath = path.startsWith("/") ? path : `/${path}`;
+        const report = analyzeAiCrawlerAccess(robots, testPath, include_deprecated);
 
         return respond(report, response_format, () => {
           const byVendor = new Map<string, typeof report.crawlers>();

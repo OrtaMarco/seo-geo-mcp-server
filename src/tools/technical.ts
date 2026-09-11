@@ -149,7 +149,7 @@ Example: "Check the sitemap for example.com" -> sitemap_check(site="example.com"
     check_broken: z
       .boolean()
       .default(false)
-      .describe("Sample links and verify they resolve. Adds up to 25 requests."),
+      .describe("Sample links and verify they resolve. Adds up to sample_size requests (default 25), six at a time."),
     sample_size: z
       .number()
       .int()

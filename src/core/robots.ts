@@ -10,6 +10,7 @@
  *   - `*` matches any sequence and `$` anchors the end of the path.
  */
 
+import { ROBOTS_MAX_PATTERN_CHARS } from "../constants.js";
 import { fetchTextResource } from "./fetch.js";
 import type { Finding } from "../format.js";
 import {
@@ -159,26 +160,57 @@ export function parseRobots(text: string): Pick<RobotsTxt, "groups" | "sitemaps"
     }
   }
 
+  // A robots.txt of junk would otherwise produce one warning per line.
+  if (warnings.length > 100) {
+    const extra = warnings.length - 100;
+    warnings.length = 100;
+    warnings.push(`…and ${extra} more warning(s).`);
+  }
   return { groups, sitemaps, warnings };
 }
 
 // --- matching --------------------------------------------------------------
 
 /**
- * Compile a robots path pattern into a regex.
- * `*` matches any sequence; a trailing `$` anchors the end of the path.
+ * Whether a robots path pattern matches `path` (RFC 9309 §2.2.2): `*` matches
+ * any sequence, a trailing `$` anchors the end, and otherwise the pattern only
+ * has to match a prefix. Deliberately not a regex: `/*a*a*a…` compiled to
+ * `.*a.*a.*…` backtracks exponentially, and both the pattern (the audited site)
+ * and the path (the caller) are untrusted. This two-pointer wildcard match is
+ * O(pattern × path) at worst, and both are length-capped.
  */
-function patternToRegex(pattern: string): RegExp {
-  let body = pattern;
+export function robotsPatternMatches(pattern: string, path: string): boolean {
+  let p = pattern;
   let anchored = false;
-  if (body.endsWith("$")) {
-    body = body.slice(0, -1);
+  if (p.endsWith("$")) {
+    p = p.slice(0, -1);
     anchored = true;
   }
-  const escaped = body
-    .replace(/[.+?^${}()|[\]\\]/g, "\\$&") // escape regex metacharacters
-    .replace(/\*/g, ".*"); // then restore the robots wildcard
-  return new RegExp(`^${escaped}${anchored ? "$" : ""}`);
+  p = p.replace(/\*{2,}/g, "*");
+  if (p.length > ROBOTS_MAX_PATTERN_CHARS || path.length > ROBOTS_MAX_PATTERN_CHARS) return false;
+
+  let pi = 0;
+  let si = 0;
+  let star = -1;
+  let mark = 0;
+  for (;;) {
+    if (pi === p.length) {
+      if (!anchored || si === path.length) return true;
+    } else if (p[pi] === "*") {
+      star = pi++;
+      mark = si;
+      continue;
+    } else if (si < path.length && p[pi] === path[si]) {
+      pi++;
+      si++;
+      continue;
+    }
+    // Mismatch (or pattern used up while an anchored match still has path left):
+    // let the last `*` swallow one more character, or give up.
+    if (star === -1 || mark >= path.length) return false;
+    pi = star + 1;
+    si = ++mark;
+  }
 }
 
 /**
@@ -246,7 +278,7 @@ export function isAllowed(
   let best: { rule: RobotsRule; length: number } | null = null;
   for (const rule of group.rules) {
     if (!rule.path) continue;
-    if (!patternToRegex(rule.path).test(path)) continue;
+    if (!robotsPatternMatches(rule.path, path)) continue;
     const length = rule.path.length;
     // Longest pattern wins; on a tie, Allow beats Disallow (§2.2.2).
     if (
