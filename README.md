@@ -3,6 +3,7 @@
 > An [MCP](https://modelcontextprotocol.io) server that lets an AI agent audit a page for **SEO** *and* **GEO** (Generative Engine Optimization) — on-page tags, structured data, robots.txt, sitemaps, hreflang, and whether ChatGPT, Claude, Perplexity and Gemini can actually crawl and cite you. **No API keys required.**
 
 [![ci](https://github.com/OrtaMarco/seo-geo-mcp-server/actions/workflows/ci.yml/badge.svg)](https://github.com/OrtaMarco/seo-geo-mcp-server/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/seo-geo-mcp-server)](https://www.npmjs.com/package/seo-geo-mcp-server)
 [![MCP](https://img.shields.io/badge/MCP-server-blue)](https://modelcontextprotocol.io)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6)](https://www.typescriptlang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](./LICENSE)
@@ -53,7 +54,7 @@ AI assistant can cite you are cheap to check and almost never checked:
   can rank fine in Google and be invisible to every AI assistant.
 
 It is the agent-facing companion to the tools at [ortamarco.me](https://ortamarco.me),
-and shares its core (SSRF-guarded fetching, public-resolver DNS, host validation)
+and shares its core (the connect-time SSRF guard and host validation)
 with [`domain-security-mcp-server`](https://github.com/OrtaMarco/domain-security-mcp-server).
 
 ## Tools
@@ -80,7 +81,7 @@ with [`domain-security-mcp-server`](https://github.com/OrtaMarco/domain-security
 | `meta_tags_check` | Title, description, canonical, robots (meta **and** `X-Robots-Tag`), lang, charset, viewport |
 | `social_preview_check` | Open Graph + Twitter Card, and verifies the `og:image` actually loads |
 | `heading_structure` | Full h1–h6 outline, multiple h1s, skipped levels, question-shaped headings |
-| `structured_data_check` | JSON-LD/microdata/RDFa extraction, parse errors, and Google rich-result requirements for 17 schema types |
+| `structured_data_check` | JSON-LD/microdata/RDFa extraction, parse errors, and Google rich-result requirements for 21 schema types |
 | `content_analysis` | Word count, Flesch reading ease, thin-content detection, text-to-HTML ratio, term density (EN + ES stopwords) |
 | `image_seo_check` | Missing alt text, missing dimensions (layout shift), lazy loading, WebP/AVIF adoption |
 
@@ -121,64 +122,70 @@ cannot be read as either allowed or blocked.
 
 ## Install
 
-Requires **Node.js 20+**.
-
-```bash
-git clone https://github.com/OrtaMarco/seo-geo-mcp-server.git
-cd seo-geo-mcp-server
-npm install
-npm run build
-```
+Requires **Node.js 20.18+**. Nothing to clone — every MCP client can run it with `npx`.
 
 ## Use it with Claude Code
 
 ```bash
-claude mcp add seo-geo -- node /absolute/path/to/seo-geo-mcp-server/dist/index.js
+claude mcp add seo-geo -- npx -y seo-geo-mcp-server
 ```
 
-## Use it with Claude Desktop
+## Use it with Claude Desktop or Cursor
 
-Add to `claude_desktop_config.json` (see [`examples/`](./examples/claude_desktop_config.json)):
+Add to `claude_desktop_config.json` (or `~/.cursor/mcp.json`) — see [`examples/`](./examples/claude_desktop_config.json):
 
 ```json
 {
   "mcpServers": {
     "seo-geo": {
-      "command": "node",
-      "args": ["/absolute/path/to/seo-geo-mcp-server/dist/index.js"]
+      "command": "npx",
+      "args": ["-y", "seo-geo-mcp-server"]
     }
   }
 }
 ```
 
-Restart Claude Desktop, then ask: *"Audit the SEO and GEO of example.com."*
+On Windows use `"command": "cmd"` with `"args": ["/c", "npx", "-y", "seo-geo-mcp-server"]`.
+Restart the client, then ask: *"Audit the SEO and GEO of example.com."*
 
 ## Self-host (HTTP transport)
 
-The same server speaks stateless **Streamable HTTP** for remote/multi-client use
-— handy behind a reverse proxy such as Coolify or Traefik. One endpoint serves
-both protocol eras; there is no session state and no `Mcp-Session-Id` to carry.
+The same server speaks stateless **Streamable HTTP** for remote or multi-client
+use. One endpoint serves both protocol eras; there is no session state and no
+`Mcp-Session-Id` to carry.
 
 ```bash
-TRANSPORT=http PORT=3000 npm start
-# POST JSON-RPC to http://localhost:3000/mcp   ·   health at /healthz
+TRANSPORT=http npx -y seo-geo-mcp-server
+# POST JSON-RPC to http://127.0.0.1:3000/mcp   ·   health at /healthz
 ```
 
-Or with Docker:
+It is **safe by default**: it binds to `127.0.0.1` and only accepts `localhost`
+`Host` and `Origin` headers, which blocks DNS-rebinding attacks from a web page.
+To expose it — for example behind Coolify or Traefik — opt in explicitly:
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `TRANSPORT` | `stdio` | `http` to serve Streamable HTTP |
+| `PORT` | `3000` | Listening port |
+| `HOST` | `127.0.0.1` | Bind address; `0.0.0.0` to accept remote connections |
+| `ALLOWED_HOSTS` | — | Comma-separated hostnames the `Host` header may carry (e.g. `mcp.example.com`) |
+| `ALLOWED_ORIGINS` | — | Comma-separated origins allowed to call from a browser |
+| `MCP_AUTH_TOKEN` | — | If set, every request needs `Authorization: Bearer <token>` |
+
+Binding to a non-loopback address without `ALLOWED_HOSTS` or `MCP_AUTH_TOKEN`
+works, but the server says so on stderr. With Docker (the image sets `HOST=0.0.0.0`):
 
 ```bash
 docker build -t seo-geo-mcp .
-docker run -p 3000:3000 -e TRANSPORT=http seo-geo-mcp
+docker run -p 3000:3000 -e ALLOWED_HOSTS=mcp.example.com -e MCP_AUTH_TOKEN=change-me seo-geo-mcp
 ```
-
-Set `ALLOWED_ORIGINS=https://your.app` to enable Origin-based DNS-rebinding
-protection (leave empty when a trusted proxy already restricts access).
 
 ## Develop
 
 ```bash
 npm run dev      # tsx watch (stdio)
-npm test         # 36 deterministic unit tests (robots matcher, SPA detection, JSON-LD…)
+npm test         # deterministic unit tests: SSRF guard, robots matcher, nesting guard,
+                 # gzip sitemaps, SPA detection, JSON-LD, HTTP transport defaults
 npm run smoke    # call all 17 tools over MCP, in BOTH protocol eras, and validate
                  # structuredContent vs outputSchema
 npm run inspect  # open the MCP Inspector against the built server
@@ -196,7 +203,9 @@ src/
 ├── server.ts       # the factory: registers every tool on one McpServer
 ├── schemas.ts      # Zod 4 outputSchema for each tool
 ├── core/           # pure logic, no MCP coupling — reusable & testable
-│   ├── fetch.ts        # SSRF-safe fetch: per-hop guard, byte caps, manual redirects
+│   ├── validate.ts     # host/URL validation and the address classifier
+│   ├── netguard.ts     # connect-time SSRF guard (every socket's address is checked)
+│   ├── fetch.ts        # fetch: guarded dispatcher, manual redirects, loop detection, byte caps
 │   ├── page.ts         # HTML loading + the shared parsed-document model
 │   ├── meta.ts         # title/description/canonical/robots, Open Graph, hreflang
 │   ├── content.ts      # headings, readability, word counts, image SEO
@@ -214,10 +223,23 @@ src/
 The `core/` layer is deliberately free of any MCP types, so the same logic can
 power both this server and a web UI.
 
-**Security:** every user-supplied URL is validated and re-checked on each
-redirect hop against loopback, private, link-local and cloud-metadata ranges, so
-the server cannot be used to probe internal networks. Response bodies are read
-through a byte cap.
+## Security
+
+The tools fetch URLs the caller names *and* URLs the audited site names (links,
+`og:image`, hreflang alternates, sitemap children, redirects), so every outbound
+connection is screened against server-side request forgery:
+
+- Private, loopback, link-local (cloud metadata), shared (CGNAT), multicast and
+  reserved addresses are refused in every spelling, including IPv4 embedded in
+  IPv6 (`[::ffff:127.0.0.1]`).
+- The check runs **at connect time**, on the address the socket is about to use,
+  so DNS rebinding and names only an internal resolver knows are refused too.
+  Redirects are followed by hand, every hop is screened, and loops are reported.
+- Untrusted input is bounded: 2 MB of HTML, 512 levels of nesting (what browsers
+  keep), a backtracking-free robots.txt matcher, 10 MiB per sitemap (gzip output
+  included), six link checks at a time, and at most 200 items per list in a result.
+
+Found a problem? Please open a [private security advisory](https://github.com/OrtaMarco/seo-geo-mcp-server/security/advisories/new).
 
 ## License
 

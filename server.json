@@ -1,0 +1,22 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.OrtaMarco/seo-geo-mcp-server",
+  "title": "SEO & GEO",
+  "description": "Audit a page's SEO and its readiness for AI answer engines: meta, schema, robots, sitemaps, AI bots.",
+  "repository": {
+    "url": "https://github.com/OrtaMarco/seo-geo-mcp-server",
+    "source": "github"
+  },
+  "version": "1.2.0",
+  "packages": [
+    {
+      "registryType": "npm",
+      "registryBaseUrl": "https://registry.npmjs.org",
+      "identifier": "seo-geo-mcp-server",
+      "version": "1.2.0",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}

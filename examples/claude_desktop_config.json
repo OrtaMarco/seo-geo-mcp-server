@@ -1,8 +1,8 @@
 {
   "mcpServers": {
     "seo-geo": {
-      "command": "node",
-      "args": ["/absolute/path/to/seo-geo-mcp-server/dist/index.js"]
+      "command": "npx",
+      "args": ["-y", "seo-geo-mcp-server"]
     }
   }
 }
