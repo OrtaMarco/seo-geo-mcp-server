@@ -2,6 +2,7 @@
 
 > An [MCP](https://modelcontextprotocol.io) server that lets an AI agent audit a page for **SEO** *and* **GEO** (Generative Engine Optimization) — on-page tags, structured data, robots.txt, sitemaps, hreflang, and whether ChatGPT, Claude, Perplexity and Gemini can actually crawl and cite you. **No API keys required.**
 
+[![ci](https://github.com/OrtaMarco/seo-geo-mcp-server/actions/workflows/ci.yml/badge.svg)](https://github.com/OrtaMarco/seo-geo-mcp-server/actions/workflows/ci.yml)
 [![MCP](https://img.shields.io/badge/MCP-server-blue)](https://modelcontextprotocol.io)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6)](https://www.typescriptlang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](./LICENSE)
