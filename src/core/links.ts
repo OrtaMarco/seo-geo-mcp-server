@@ -51,6 +51,16 @@ const GENERIC_ANCHORS = new Set([
   "seguir leyendo", "detalles", "enlace",
 ]);
 
+/**
+ * Whether an HTTP status means the link is dead. 401/403/429 and LinkedIn's
+ * non-standard 999 are what bot protection answers to an automated probe while
+ * the page works fine in a browser, so they are not reported as broken.
+ */
+export function isBrokenStatus(status: number): boolean {
+  if (status === 401 || status === 403 || status === 429 || status === 999) return false;
+  return status >= 400;
+}
+
 export async function analyzeLinks(
   page: PageDoc,
   checkBroken = false,
@@ -148,7 +158,7 @@ export async function analyzeLinks(
           res = await safeFetch(parsed, { method: "GET", timeoutMs: 8000, maxBytes: 2048 });
         }
         link.status = res.status;
-        if (res.status >= 400) broken.push(link);
+        if (isBrokenStatus(res.status)) broken.push(link);
       } catch (err) {
         link.error = err instanceof Error ? err.message : String(err);
         broken.push(link);

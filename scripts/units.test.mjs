@@ -27,6 +27,7 @@ import { analyzeRendering, analyzeGeoReadiness } from "../dist/core/geo.js";
 import { analyzeHreflang, normalizeForCompare } from "../dist/core/meta.js";
 import { analyzeStructuredData } from "../dist/core/structured-data.js";
 import { analyzeHeadings, analyzeContent } from "../dist/core/content.js";
+import { isBrokenStatus } from "../dist/core/links.js";
 
 /** Build a RobotsTxt object from raw text, as fetchRobots would. */
 function robots(text, status = 200) {
@@ -565,4 +566,9 @@ test("HTTP transport on a public bind warns when it has no Host allowlist or tok
   } finally {
     await srv.stop();
   }
+});
+
+test("link checker: bot-wall statuses are not reported as broken links", () => {
+  for (const s of [200, 301, 401, 403, 429, 999]) assert.equal(isBrokenStatus(s), false, String(s));
+  for (const s of [400, 404, 410, 500, 502, 503]) assert.equal(isBrokenStatus(s), true, String(s));
 });
