@@ -1,6 +1,6 @@
 {
   "name": "seo-geo-mcp-server",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "MCP server for SEO and GEO (Generative Engine Optimization) audits — on-page SEO, structured data, robots.txt, sitemaps, hreflang, and AI-crawler access for ChatGPT, Claude, Perplexity and Gemini. No API keys required.",
   "mcpName": "io.github.OrtaMarco/seo-geo-mcp-server",
   "type": "module",
